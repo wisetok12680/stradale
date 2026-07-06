@@ -6,6 +6,7 @@
 # Diagnostic and temp files
 loops_output.txt
 *.log
+*.json
 
 # Editor configurations
 .vscode/

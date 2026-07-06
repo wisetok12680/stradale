@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stradale - Vehicle Dynamics Visualizer</title>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg-color: #0d1117;
+            --panel-bg: rgba(22, 27, 34, 0.7);
+            --panel-border: rgba(48, 54, 61, 0.6);
+            --text-color: #c9d1d9;
+            --accent-cyan: #58a6ff;
+            --accent-green: #3fb950;
+            --accent-amber: #d29922;
+            --accent-red: #f85149;
+            --font-main: 'Outfit', sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: var(--font-main);
+            padding: 20px;
+            overflow-x: hidden;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            border-bottom: 1px solid var(--panel-border);
+            padding-bottom: 15px;
+        }
+
+        h1 {
+            font-size: 28px;
+            font-weight: 800;
+            background: linear-gradient(90deg, var(--accent-cyan), var(--accent-green));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .dashboard {
+            display: grid;
+            grid-template-columns: 1fr 2fr;
+            gap: 20px;
+        }
+
+        .panel {
+            background: var(--panel-bg);
+            border: 1px solid var(--panel-border);
+            border-radius: 12px;
+            backdrop-filter: blur(10px);
+            padding: 20px;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+
+        .panel-title {
+            font-size: 16px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 15px;
+            color: var(--accent-cyan);
+            border-bottom: 1px solid rgba(48, 54, 61, 0.4);
+            padding-bottom: 8px;
+        }
+
+        /* HUD controls */
+        .hud-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .hud-card {
+            background: rgba(33, 38, 45, 0.6);
+            border: 1px solid var(--panel-border);
+            border-radius: 8px;
+            padding: 15px;
+            text-align: center;
+        }
+
+        .hud-value {
+            font-family: var(--font-mono);
+            font-size: 24px;
+            font-weight: bold;
+            color: #ffffff;
+            margin-bottom: 5px;
+            text-shadow: 0 0 10px rgba(88, 106, 255, 0.4);
+        }
+
+        .hud-label {
+            font-size: 11px;
+            color: #8b949e;
+            text-transform: uppercase;
+        }
+
+        /* Canvas visualizer */
+        canvas#trackCanvas {
+            width: 100%;
+            height: 180px;
+            background: #07090e;
+            border-radius: 8px;
+            border: 1px solid var(--panel-border);
+        }
+
+        /* Chart grids */
+        .chart-container {
+            position: relative;
+            height: 230px;
+            margin-bottom: 15px;
+        }
+
+        .control-panel {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        select, button {
+            background: rgba(33, 38, 45, 0.8);
+            border: 1px solid var(--panel-border);
+            color: var(--text-color);
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-family: var(--font-main);
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        select:hover, button:hover {
+            border-color: var(--accent-cyan);
+            background: rgba(56, 139, 253, 0.15);
+        }
+
+        button.active {
+            background: var(--accent-cyan);
+            color: #000;
+        }
+
+        .grade-tag {
+            font-weight: bold;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+        .grade-flat { background: rgba(88, 166, 255, 0.2); color: var(--accent-cyan); }
+        .grade-up { background: rgba(63, 185, 80, 0.2); color: var(--accent-green); }
+        .grade-down { background: rgba(248, 81, 73, 0.2); color: var(--accent-red); }
+    </style>
+</head>
+<body>
+    <header>
+        <div>
+            <h1>Stradale</h1>
+            <p style="font-size: 12px; color: #8b949e; margin-top: 2px;">Research-Grade Longitudinal Telemetry Visualizer</p>
+        </div>
+        <div class="control-panel">
+            <span style="align-self: center; font-size: 14px;">Select Grade Run:</span>
+            <select id="gradeSelect" onchange="loadSimulationData()">
+                <option value="simulation_log_flat.json">Flat Track (0% Grade)</option>
+                <option value="simulation_log_uphill.json">Uphill Climb (+5% Grade)</option>
+                <option value="simulation_log_downhill.json">Downhill Run (-5% Grade)</option>
+            </select>
+            <button id="playBtn" onclick="togglePlayback()">Play</button>
+            <button onclick="resetPlayback()">Reset</button>
+        </div>
+    </header>
+
+    <div class="dashboard">
+        <!-- Telemetry Details & Visualizer -->
+        <div style="display: flex; flex-direction: column; gap: 20px;">
+            <div class="panel">
+                <div class="panel-title">Real-Time Cockpit Telemetry</div>
+                <div class="hud-grid">
+                    <div class="hud-card">
+                        <div class="hud-value" id="hudSpeed">0.0</div>
+                        <div class="hud-label">Speed (km/h)</div>
+                    </div>
+                    <div class="hud-card">
+                        <div class="hud-value" id="hudAcceleration">0.00</div>
+                        <div class="hud-label">Acceleration (G)</div>
+                    </div>
+                    <div class="hud-card">
+                        <div class="hud-value" id="hudDistance">0.0</div>
+                        <div class="hud-label">Distance (m)</div>
+                    </div>
+                    <div class="hud-card">
+                        <div class="hud-value" id="hudGrade">0%</div>
+                        <div class="hud-label">Active Grade</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="panel" style="flex-grow: 1;">
+                <div class="panel-title">Longitudinal Track Animation</div>
+                <canvas id="trackCanvas" width="600" height="150"></canvas>
+                <p style="font-size: 11px; color: #8b949e; margin-top: 8px; text-align: center;">
+                    Blue Vector = Tractive Force | Red Vector = Drag & Resistance Forces
+                </p>
+            </div>
+        </div>
+
+        <!-- Telemetry Graphs -->
+        <div class="panel" style="display: flex; flex-direction: column; gap: 20px;">
+            <div class="panel-title">Dynamics Analytics</div>
+            <div style="display: grid; grid-template-rows: 1fr 1fr; gap: 10px;">
+                <div class="chart-container">
+                    <canvas id="speedChart"></canvas>
+                </div>
+                <div class="chart-container">
+                    <canvas id="forceChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let simData = [];
+        let currentIndex = 0;
+        let isPlaying = false;
+        let animationFrameId = null;
+        let speedChart = null;
+        let forceChart = null;
+
+        const canvas = document.getElementById('trackCanvas');
+        const ctx = canvas.getContext('2d');
+
+        async function loadSimulationData() {
+            resetPlayback();
+            const filename = document.getElementById('gradeSelect').value;
+            try {
+                const response = await fetch(filename);
+                simData = await response.json();
+                currentIndex = 0;
+                
+                setupCharts();
+                drawTrackFrame();
+                updateHUD();
+            } catch (err) {
+                console.error("Failed to load data:", err);
+                ctx.fillStyle = "#f85149";
+                ctx.font = "14px Outfit";
+                ctx.fillText("Failed to load: Run simulator.exe first", 20, 40);
+            }
+        }
+
+        function setupCharts() {
+            const times = simData.map(d => d.time.toFixed(2));
+            const speeds = simData.map(d => (d.velocity * 3.6).toFixed(1)); // m/s to km/h
+            const accelerations = simData.map(d => (d.acceleration / 9.80665).toFixed(2)); // to Gs
+            
+            const fEngine = simData.map(d => d.F_engine.toFixed(0));
+            const fDrag = simData.map(d => d.F_drag.toFixed(0));
+            const fRR = simData.map(d => d.F_rr.toFixed(0));
+            const fGrade = simData.map(d => d.F_grade.toFixed(0));
+
+            if (speedChart) speedChart.destroy();
+            if (forceChart) forceChart.destroy();
+
+            const commonOptions = {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { labels: { color: '#c9d1d9', font: { family: 'Outfit' } } }
+                },
+                scales: {
+                    x: { ticks: { color: '#8b949e' }, grid: { color: 'rgba(48,54,61,0.2)' } },
+                    y: { ticks: { color: '#8b949e' }, grid: { color: 'rgba(48,54,61,0.2)' } }
+                }
+            };
+
+            // Speed & G-Force Chart
+            speedChart = new Chart(document.getElementById('speedChart').getContext('2d'), {
+                type: 'line',
+                data: {
+                    labels: times,
+                    datasets: [
+                        { label: 'Speed (km/h)', data: speeds, borderColor: '#58a6ff', borderWidth: 2, yAxisID: 'y', pointRadius: 0 },
+                        { label: 'Acceleration (G)', data: accelerations, borderColor: '#3fb950', borderWidth: 2, yAxisID: 'y1', pointRadius: 0 }
+                    ]
+                },
+                options: {
+                    ...commonOptions,
+                    scales: {
+                        ...commonOptions.scales,
+                        y: { position: 'left', ticks: { color: '#58a6ff' }, grid: { color: 'rgba(48,54,61,0.2)' } },
+                        y1: { position: 'right', ticks: { color: '#3fb950' }, grid: { drawOnChartArea: false } }
+                    }
+                }
+            });
+
+            // Forces Chart
+            forceChart = new Chart(document.getElementById('forceChart').getContext('2d'), {
+                type: 'line',
+                data: {
+                    labels: times,
+                    datasets: [
+                        { label: 'Engine Tractive (N)', data: fEngine, borderColor: '#d29922', borderWidth: 2, pointRadius: 0 },
+                        { label: 'Aero Drag (N)', data: fDrag, borderColor: '#f85149', borderWidth: 2, pointRadius: 0 },
+                        { label: 'Rolling Resistance (N)', data: '#8b949e', borderColor: '#8b949e', borderWidth: 1, borderDash: [5,5], pointRadius: 0, data: fRR },
+                        { label: 'Grade Gravity (N)', data: fGrade, borderColor: '#ab7df6', borderWidth: 2, pointRadius: 0 }
+                    ]
+                },
+                options: commonOptions
+            });
+        }
+
+        function updateHUD() {
+            if (simData.length === 0 || currentIndex >= simData.length) return;
+            const data = simData[currentIndex];
+
+            document.getElementById('hudSpeed').textContent = (data.velocity * 3.6).toFixed(1);
+            document.getElementById('hudAcceleration').textContent = (data.acceleration / 9.80665).toFixed(2);
+            document.getElementById('hudDistance').textContent = data.position.toFixed(1);
+            
+            const gradeSelectVal = document.getElementById('gradeSelect').value;
+            const gradeLabel = document.getElementById('hudGrade');
+            if (gradeSelectVal.includes('flat')) {
+                gradeLabel.textContent = "0%";
+                gradeLabel.className = "hud-value grade-tag grade-flat";
+            } else if (gradeSelectVal.includes('uphill')) {
+                gradeLabel.textContent = "+5%";
+                gradeLabel.className = "hud-value grade-tag grade-up";
+            } else {
+                gradeLabel.textContent = "-5%";
+                gradeLabel.className = "hud-value grade-tag grade-down";
+            }
+
+            // Highlight index in charts
+            if (speedChart && forceChart) {
+                speedChart.setActiveElements([{ datasetIndex: 0, index: currentIndex }]);
+                speedChart.update();
+                forceChart.setActiveElements([{ datasetIndex: 0, index: currentIndex }]);
+                forceChart.update();
+            }
+        }
+
+        function drawTrackFrame() {
+            if (simData.length === 0) return;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            const roadY = canvas.height / 2 + 10;
+            const roadHeight = 6;
+
+            // Draw road
+            ctx.fillStyle = "#30363d";
+            ctx.fillRect(0, roadY, canvas.width, roadHeight);
+
+            // Draw start/end markers
+            ctx.fillStyle = "#8b949e";
+            ctx.font = "10px Outfit";
+            ctx.fillText("0 m", 40, roadY - 15);
+            ctx.fillText("1000 m", canvas.width - 80, roadY - 15);
+
+            // Draw vehicle
+            const currentPosition = simData[currentIndex].position;
+            const maxPosition = 1000.0;
+            const margin = 50;
+            
+            // Map position to canvas x
+            const carX = margin + (currentPosition / maxPosition) * (canvas.width - 2 * margin);
+
+            // Draw car body
+            ctx.fillStyle = "#58a6ff";
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = "#58a6ff";
+            ctx.fillRect(carX - 15, roadY - 18, 30, 15); // chassis
+            ctx.shadowBlur = 0; // reset
+
+            // Wheels
+            ctx.fillStyle = "#000000";
+            ctx.beginPath();
+            ctx.arc(carX - 8, roadY - 3, 5, 0, Math.PI * 2);
+            ctx.arc(carX + 8, roadY - 3, 5, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Force vectors representation
+            const fEngine = simData[currentIndex].F_engine;
+            const fDrag = simData[currentIndex].F_drag;
+            const fRR = simData[currentIndex].F_rr;
+            const fGrade = simData[currentIndex].F_grade;
+
+            // Tractive vector (glowing green/blue)
+            const forwardScale = 0.005; // 1px per 200N
+            const forwardVector = fEngine * forwardScale;
+            ctx.strokeStyle = "#58a6ff";
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(carX + 15, roadY - 10);
+            ctx.lineTo(carX + 15 + forwardVector, roadY - 10);
+            ctx.stroke();
+
+            // Drag + resistance vector (red)
+            const opposingVector = (fDrag + fRR + fGrade) * forwardScale;
+            ctx.strokeStyle = "#f85149";
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(carX - 15, roadY - 10);
+            ctx.lineTo(carX - 15 - opposingVector, roadY - 10);
+            ctx.stroke();
+        }
+
+        function togglePlayback() {
+            const playBtn = document.getElementById('playBtn');
+            if (isPlaying) {
+                isPlaying = false;
+                playBtn.textContent = "Play";
+                cancelAnimationFrame(animationFrameId);
+            } else {
+                isPlaying = true;
+                playBtn.textContent = "Pause";
+                playbackStep();
+            }
+        }
+
+        function playbackStep() {
+            if (!isPlaying) return;
+            
+            currentIndex += 1;
+            if (currentIndex >= simData.length) {
+                currentIndex = 0;
+            }
+            
+            updateHUD();
+            drawTrackFrame();
+            
+            // Limit animation rate
+            setTimeout(() => {
+                animationFrameId = requestAnimationFrame(playbackStep);
+            }, 60); // approx 16 FPS matching dt=0.05s roughly
+        }
+
+        function resetPlayback() {
+            isPlaying = false;
+            document.getElementById('playBtn').textContent = "Play";
+            cancelAnimationFrame(animationFrameId);
+            currentIndex = 0;
+            updateHUD();
+            drawTrackFrame();
+        }
+
+        // Initialize on load
+        window.onload = loadSimulationData;
+    </script>
+</body>
+</html>
