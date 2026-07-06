@@ -22,7 +22,8 @@ std::vector<TrackSegment> compute_track_segments(const Track& track)
     std::vector<TrackSegment> segments;
     segments.reserve(track.points.size() - 1);
     
-    for (size_t i = 0; i < track.points.size() - 1; ++i)
+    size_t N = track.points.size();
+    for (size_t i = 0; i < N - 1; ++i)
     {
         double dx = track.points[i+1].x_coordinate - track.points[i].x_coordinate;
         double dy = track.points[i+1].y_coordinate - track.points[i].y_coordinate;
@@ -30,10 +31,20 @@ std::vector<TrackSegment> compute_track_segments(const Track& track)
 
         double length = std::sqrt(dx*dx + dy*dy);
         double heading = std::atan2(dy, dx);
-        double grade = (length > 1e-6) ? (dz / length) : 0.0;
+        double grade = (length > MIN_SEGMENT_LENGTH) ? (dz / length) : 0.0;
 
-        // Curvature is initialized to 0.0 for Phase 1
-        segments.push_back(TrackSegment{length, heading, grade, 0.0});
+        // Determine points for curvature calculation
+        size_t prev_idx = (i == 0) ? (track.is_closed ? N - 2 : 0) : i - 1;
+        size_t curr_idx = i;
+        size_t next_idx = i + 1;
+
+        double curvature = compute_curvature(
+            track.points[prev_idx],
+            track.points[curr_idx],
+            track.points[next_idx]
+        );
+
+        segments.push_back(TrackSegment{length, heading, grade, curvature});
     }
     return segments;
 }
@@ -70,6 +81,9 @@ void print_track_statistics(const Track& track)
     double sum_grade = 0.0;
     double max_len = -1e9;
     double min_len = 1e9;
+    double max_curvature = -1e9;
+    double min_curvature = 1e9;
+    double sum_curvature = 0.0;
 
     for (const auto& seg : track.segments)
     {
@@ -78,6 +92,10 @@ void print_track_statistics(const Track& track)
         if (seg.grade < min_grade) min_grade = seg.grade;
         if (seg.length > max_len) max_len = seg.length;
         if (seg.length < min_len) min_len = seg.length;
+
+        sum_curvature += seg.curvature;
+        if (seg.curvature > max_curvature) max_curvature = seg.curvature;
+        if (seg.curvature < min_curvature) min_curvature = seg.curvature;
     }
 
     std::cout << "Average segment length: " << (track.total_length / track.segments.size()) << " m\n";
@@ -85,6 +103,9 @@ void print_track_statistics(const Track& track)
     std::cout << "Maximum grade: " << max_grade << " (slope)\n";
     std::cout << "Minimum grade: " << min_grade << " (slope)\n";
     std::cout << "Average grade: " << (sum_grade / track.segments.size()) << "\n";
+    std::cout << "Maximum curvature: " << max_curvature << " m^-1\n";
+    std::cout << "Minimum curvature: " << min_curvature << " m^-1\n";
+    std::cout << "Average curvature: " << (sum_curvature / track.segments.size()) << " m^-1\n";
     std::cout << "======================================\n";
 }
 
@@ -108,19 +129,20 @@ bool validate_track(const Track& track)
     int steep_count = 0;
     for (size_t i = 0; i < track.segments.size(); ++i)
     {
-        if (track.segments[i].length <= 1e-4)
+        if (track.segments[i].length <= MIN_SEGMENT_LENGTH)
         {
             degenerate_count++;
         }
         if (std::abs(track.segments[i].grade) > 0.3)
         {
+            std::cout << "[Validation Warning] Segment " << i << " has extremely steep grade: " << track.segments[i].grade << "\n";
             steep_count++;
         }
     }
     
     if (degenerate_count > 0)
     {
-        std::cout << "[Validation Warning] Found " << degenerate_count << " degenerate segments (length <= 0.1 mm).\n";
+        std::cout << "[Validation Warning] Found " << degenerate_count << " degenerate segments (length <= " << MIN_SEGMENT_LENGTH << " m).\n";
     }
     if (steep_count > 0)
     {
@@ -137,4 +159,36 @@ bool validate_track(const Track& track)
     }
     std::cout << "======================================\n";
     return is_valid;
+}
+
+double compute_curvature(
+    const TrackPoint& previous,
+    const TrackPoint& current,
+    const TrackPoint& next
+)
+{
+    double dx_prev = current.x_coordinate - previous.x_coordinate;
+    double dy_prev = current.y_coordinate - previous.y_coordinate;
+    double a = std::sqrt(dx_prev*dx_prev + dy_prev*dy_prev);
+
+    double dx_next = next.x_coordinate - current.x_coordinate;
+    double dy_next = next.y_coordinate - current.y_coordinate;
+    double b = std::sqrt(dx_next*dx_next + dy_next*dy_next);
+
+    double dx_chord = next.x_coordinate - previous.x_coordinate;
+    double dy_chord = next.y_coordinate - previous.y_coordinate;
+    double c = std::sqrt(dx_chord*dx_chord + dy_chord*dy_chord);
+
+    if (a < MIN_SEGMENT_LENGTH || b < MIN_SEGMENT_LENGTH || c < MIN_SEGMENT_LENGTH)
+    {
+        return 0.0;
+    }
+
+    // Signed double area (2A) via vector cross product of (P_prev -> P_curr) and (P_curr -> P_next)
+    double double_area_signed = dx_prev * dy_next - dy_prev * dx_next;
+
+    // κ = 4A / (abc) which is mathematically identical to 2 * (2A_signed) / (abc)
+    double curvature = (2.0 * double_area_signed) / (a * b * c);
+
+    return curvature;
 }

@@ -44,14 +44,18 @@ Where:
 - $R_{\text{lat}} = 111,320.0 \text{ m/degree}$ is the physical length of one degree of latitude.
 - $\cos(\phi_0)$ scales the longitude degree width relative to the origin latitude.
 
-### 2. Segment Properties (Phase 1 Geometry)
+### 2. Segment Properties (Phase 1-4 Geometry)
 For a segment $i$ connecting $P_i(x_i, y_i, z_i)$ to $P_{i+1}(x_{i+1}, y_{i+1}, z_{i+1})$:
 *   **Horizontal Length ($L_i$):**
     $$L_i = \sqrt{(x_{i+1} - x_i)^2 + (y_{i+1} - y_i)^2}$$
 *   **Heading Angle ($\psi_i$):**
     $$\psi_i = \text{atan2}(y_{i+1} - y_i, x_{i+1} - x_i)$$
 *   **Grade Slope ($g_i$):**
-    $$g_i = \frac{z_{i+1} - z_i}{L_i} \quad (\text{if } L_i > 10^{-6} \text{ m})$$
+    $$g_i = \frac{z_{i+1} - z_i}{L_i} \quad (\text{if } L_i > \text{MIN\_SEGMENT\_LENGTH})$$
+*   **Signed Curvature ($\kappa_i$):**
+    Calculated at node $i$ using three consecutive points ($P_{i-1}, P_i, P_{i+1}$):
+    $$\kappa_i = \frac{2 \cdot \text{double\_area\_signed}}{a \cdot b \cdot c}$$
+    *(Note: This is mathematically equivalent to $\kappa = 4A / (abc)$, where $A$ is the triangle area and $\text{double\_area\_signed} = 2A$ is computed via vector cross product of consecutive segments).*
 
 ---
 
@@ -80,6 +84,7 @@ $env:PATH += ';C:\msys64\ucrt64\bin'; .\simulator.exe
 *   **Calculated Length:** **13,623.00 m** (99.97% match with actual 13.626 km layout)
 *   **Closed Loop:** Yes (detected successfully)
 *   **Grade Bounds:** $[-7.44\%, 9.57\%]$ slope
+*   **Curvature Bounds:** $[-0.0660, 0.0349]\text{ m}^{-1}$
 
 ### 2. Monza (Autodromo Nazionale Monza GP Loop)
 Monza's raw GPX contains overlapping loops and a southern detour. The isolated loop is extracted by keeping indexes `0-39` (Start $\to$ Ascari entrance) and `211-229` (Ascari exit $\to$ Start-Finish), and then looping back to `0`.
@@ -87,10 +92,26 @@ Monza's raw GPX contains overlapping loops and a southern detour. The isolated l
 *   **Calculated Length:** **5,791.39 m** (99.97% match with actual 5.793 km GP layout)
 *   **Closed Loop:** Yes (detected successfully)
 *   **Grade Bounds:** $[-3.00\%, 11.44\%]$ slope
+*   **Curvature Bounds:** $[-0.0262, 0.0541]\text{ m}^{-1}$
 *   **Validation:** `PASSED. Geometry is physically sound.`
 
 ---
 
-## 🗺️ Roadmap
-- **Stage 2:** Implement signed track curvature ($1/R$) using three-point circumcircle calculations and cross-slope banking profile projection.
-- **Stage 3 (Vehicle Dynamics):** Load transfer calculations, multi-body suspensions, tyre slip angles, and Bayesian engine optimization.
+## 🗺️ Long-Term Roadmap
+
+### Stage 1: Track Geometry (Completed)
+- [x] Unified `Track` class encapsulation.
+- [x] GPS-to-Cartesian Equirectangular Projection.
+- [x] Phase 1-4 track geometry: horizontal segment lengths, heading angles, vertical grades, and signed circumcircle curvature calculations.
+- [x] Open/closed loop track validation diagnostics.
+
+### Stage 2: Track Geometry Improvements (Roadmap)
+- [ ] Spline interpolation of sparse coordinates.
+- [ ] Uniform spatial resampling (to improve numerical stability of curvature).
+- [ ] Cross-slope banking profile calculation.
+
+### Stage 3: Vehicle Subsystem (Next Focus)
+- [ ] `Vehicle` class composed of Engine, Transmission, Differential, Tires, Suspension, Aerodynamics, and Brakes.
+- [ ] Longitudinal force model (tyre grip, rolling resistance, aerodynamic drag, and gravity along grade).
+- [ ] Lap simulation pipeline.
+
