@@ -1,0 +1,11 @@
+# Compiled binaries
+*.exe
+*.o
+*.out
+
+# Diagnostic and temp files
+loops_output.txt
+*.log
+
+# Editor configurations
+.vscode/
