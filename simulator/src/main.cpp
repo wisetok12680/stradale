@@ -83,6 +83,13 @@ void run_vehicle_simulation(const Track& lemans, const Track& monza)
     car.engine.maximum_torque = 500.0;              // Nm
     car.engine.idle_rpm = 1000.0;                   // rev/min
     car.engine.redline_rpm = 8500.0;                // rev/min
+    car.engine.torque_curve = {
+        { 1000.0, 340.0 },
+        { 4000.0, 460.0 },
+        { 6200.0, 500.0 },
+        { 7200.0, 490.0 },
+        { 8500.0, 410.0 }
+    };
     
     car.transmission.gear_ratios = { 3.10, 2.20, 1.65, 1.30, 1.10, 0.95 };
     car.transmission.final_drive_ratio = 4.10;
