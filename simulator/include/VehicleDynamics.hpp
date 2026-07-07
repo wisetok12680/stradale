@@ -2,6 +2,8 @@
 
 #include "Vehicle.hpp"
 #include "Track.hpp"
+#include "SimulationState.hpp"
+#include "VehicleForces.hpp"
 #include <vector>
 #include <string>
 
@@ -32,13 +34,21 @@ struct LapSimulationStep {
 
 class VehicleDynamics {
 public:
-    // Core forces calculations
-    static double compute_drag_force(const Vehicle& vehicle, double velocity);
-    static double compute_rolling_resistance(const Vehicle& vehicle);
-    static double compute_grade_force(const Vehicle& vehicle, double grade);
-    static double compute_engine_force(const Vehicle& vehicle, double velocity);
+    // Core state integrator using Explicit Euler (updates SimulationState by dt)
+    static void integrate(
+        const Vehicle& vehicle,
+        double dt,
+        const VehicleForces& forces,
+        SimulationState& state
+    );
+
+    // Simple automatic gear shift logic
+    static void update_gear_shifting(
+        const Vehicle& vehicle,
+        SimulationState& state
+    );
     
-    // Runs straight line acceleration run
+    // Runs straight line simulation
     static std::vector<SimulationStep> run_straight_simulation(
         const Vehicle& vehicle,
         double grade,
