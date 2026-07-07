@@ -19,6 +19,7 @@ struct Vehicle {
     double tyre_radius = 0.33;                // m
     double tyre_mu = 1.20;                    // dimensionless
     double rolling_resistance_coeff = 0.015;  // dimensionless
+    double maximum_braking_g = 1.8;           // dimensionless (1.8 G)
     
     Engine engine;
     Transmission transmission;
