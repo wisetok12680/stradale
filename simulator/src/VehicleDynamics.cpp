@@ -9,7 +9,7 @@ double VehicleDynamics::compute_drag_force(const Vehicle& vehicle, double veloci
 {
     // F_drag = 0.5 * rho * Cd * A * v^2
     const double rho = 1.225; // kg/m^3 (sea level air density)
-    double drag = 0.5 * rho * vehicle.drag_coefficient * vehicle.frontal_area * velocity * velocity;
+    double drag = 0.5 * rho * vehicle.Cd * vehicle.frontal_area * velocity * velocity;
     return drag;
 }
 
@@ -34,7 +34,7 @@ double VehicleDynamics::compute_grade_force(const Vehicle& vehicle, double grade
 double VehicleDynamics::compute_engine_force(const Vehicle& vehicle, double velocity)
 {
     // Tractive limit based on engine torque and final drive ratio
-    double F_max_tractive = (vehicle.engine.max_torque * vehicle.final_drive_ratio) / vehicle.tyre_radius;
+    double F_max_tractive = (vehicle.engine.maximum_torque * vehicle.transmission.final_drive_ratio) / vehicle.tyre_radius;
 
     if (velocity <= 1e-3)
     {
@@ -42,7 +42,7 @@ double VehicleDynamics::compute_engine_force(const Vehicle& vehicle, double velo
     }
 
     // Power limit: F = P / v
-    double F_power_limit = vehicle.engine.max_power / velocity;
+    double F_power_limit = vehicle.engine.maximum_power / velocity;
 
     // Output is the minimum of torque limit and power limit
     double F_engine = std::min(F_max_tractive, F_power_limit);

@@ -4,6 +4,7 @@
 #include "../include/CoordinateConverter.hpp"
 #include "../include/TrackAnalyzer.hpp"
 #include "../include/VehicleDynamics.hpp"
+#include "../include/Aerodynamics.hpp"
 
 Track process_track(const char* name, const char* filepath)
 {
@@ -63,27 +64,49 @@ void run_vehicle_simulation(const Track& lemans, const Track& monza)
     std::cout << "VEHICLE DYNAMICS SIMULATION RUN\n";
     std::cout << "======================================\n";
 
-    // Initialize GT3-like sports car properties
+    // Initialize baseline GT3 race car properties
     Vehicle car;
-    car.mass = 1300.0;                    // kg
-    car.wheelbase = 2.635;                // m
-    car.front_track_width = 1.600;        // m
-    car.rear_track_width = 1.600;         // m
-    car.center_of_gravity_height = 0.400; // m
-    car.frontal_area = 2.0;               // m^2
-    car.drag_coefficient = 0.33;          // Cd
-    car.rolling_resistance_coeff = 0.015; // Crr
-    car.tyre_radius = 0.33;               // m
-    car.final_drive_ratio = 4.0;
+    car.mass = 1300.0;                              // kg
+    car.front_weight_fraction = 0.46;               // dimensionless
+    car.wheelbase = 2.70;                           // m
+    car.front_track_width = 1.67;                   // m
+    car.rear_track_width = 1.65;                    // m
+    car.cg_height = 0.32;                           // m
+    car.frontal_area = 1.90;                        // m²
+    car.Cd = 0.34;                                  // dimensionless
+    car.Cl = -1.15;                                 // dimensionless (downforce)
+    car.tyre_radius = 0.33;                         // m
+    car.tyre_mu = 1.20;                             // dimensionless
+    car.rolling_resistance_coeff = 0.015;            // dimensionless
     
-    car.engine.max_power = 370000.0;      // 370 kW
-    car.engine.max_torque = 500.0;        // 500 Nm
+    car.engine.maximum_power = 370000.0;            // W
+    car.engine.maximum_torque = 500.0;              // Nm
+    car.engine.idle_rpm = 1000.0;                   // rev/min
+    car.engine.redline_rpm = 8500.0;                // rev/min
+    
+    car.transmission.gear_ratios = { 3.10, 2.20, 1.65, 1.30, 1.10, 0.95 };
+    car.transmission.final_drive_ratio = 4.10;
+    car.transmission.drivetrain_efficiency = 0.92;
 
-    std::cout << "Vehicle Initialized:\n";
+    std::cout << "Vehicle Initialized (GT3 Baseline):\n";
     std::cout << "  Mass: " << car.mass << " kg\n";
-    std::cout << "  Max Power: " << (car.engine.max_power / 1000.0) << " kW\n";
-    std::cout << "  Max Torque: " << car.engine.max_torque << " Nm\n";
-    std::cout << "  Cd: " << car.drag_coefficient << ", Frontal Area: " << car.frontal_area << " m^2\n";
+    std::cout << "  Max Power: " << (car.engine.maximum_power / 1000.0) << " kW\n";
+    std::cout << "  Max Torque: " << car.engine.maximum_torque << " Nm\n";
+    std::cout << "  Cd: " << car.Cd << ", Cl: " << car.Cl << ", Frontal Area: " << car.frontal_area << " m^2\n";
+
+    // Aerodynamics Subsystem Validation
+    std::cout << "\n========== AERODYNAMICS VALIDATION ==========\n";
+    std::cout << std::fixed << std::setprecision(2);
+    for (double speed_kmh : {100.0, 200.0, 250.0}) {
+        double v = speed_kmh / 3.6; // convert to m/s
+        auto forces = Aerodynamics::compute_forces(car, v);
+        std::cout << "At " << std::setw(3) << static_cast<int>(speed_kmh) << " km/h:\n"
+                  << "  Drag Force:         " << std::setw(8) << forces.drag << " N\n"
+                  << "  DF Front Axle:      " << std::setw(8) << forces.downforce_front << " N\n"
+                  << "  DF Rear Axle:       " << std::setw(8) << forces.downforce_rear << " N\n"
+                  << "  DF Total:           " << std::setw(8) << (forces.downforce_front + forces.downforce_rear) << " N\n";
+    }
+    std::cout << "=============================================\n";
 
     double duration = 15.0; // seconds
     double dt = 0.05;       // seconds
