@@ -5,7 +5,7 @@
 #include "../include/TrackAnalyzer.hpp"
 #include "../include/VehicleDynamics.hpp"
 
-void process_track(const char* name, const char* filepath)
+Track process_track(const char* name, const char* filepath)
 {
     std::cout << "\n======================================\n";
     std::cout << "PROCESSING TRACK: " << name << "\n";
@@ -16,7 +16,7 @@ void process_track(const char* name, const char* filepath)
     if (track.points.empty())
     {
         std::cout << "Failed to load track points from: " << filepath << "\n";
-        return;
+        return track;
     }
     std::cout << "Successfully loaded " << track.points.size() << " raw track points.\n";
 
@@ -54,9 +54,10 @@ void process_track(const char* name, const char* filepath)
                       << std::setw(15) << track.segments[i].curvature << "\n";
         }
     }
+    return track;
 }
 
-void run_vehicle_simulation()
+void run_vehicle_simulation(const Track& lemans, const Track& monza)
 {
     std::cout << "\n======================================\n";
     std::cout << "VEHICLE DYNAMICS SIMULATION RUN\n";
@@ -99,42 +100,31 @@ void run_vehicle_simulation()
     auto log_down = VehicleDynamics::run_straight_simulation(car, -0.05, duration, dt);
     VehicleDynamics::export_to_json(log_down, "simulation_log_downhill.json");
 
+    // 4. Lap Simulations
+    std::cout << "\nRunning full lap simulations...\n";
+    
+    auto log_lemans_lap = VehicleDynamics::run_lap_simulation(car, lemans, dt);
+    VehicleDynamics::export_lap_to_json(log_lemans_lap, "lemans_lap_simulation.json");
+    std::cout << "  Le Mans Lap Steps: " << log_lemans_lap.size() 
+              << ", Lap Time: " << log_lemans_lap.back().time << " s\n";
+
+    auto log_monza_lap = VehicleDynamics::run_lap_simulation(car, monza, dt);
+    VehicleDynamics::export_lap_to_json(log_monza_lap, "monza_lap_simulation.json");
+    std::cout << "  Monza Lap Steps: " << log_monza_lap.size() 
+              << ", Lap Time: " << log_monza_lap.back().time << " s\n";
+
     std::cout << "\nSimulation Logs generated successfully:\n";
     std::cout << "  - simulation_log_flat.json\n";
     std::cout << "  - simulation_log_uphill.json\n";
     std::cout << "  - simulation_log_downhill.json\n";
-
-    // Print Telemetry Samples for Flat Track
-    std::cout << "\nFlat Track (0% Grade) Telemetry Samples:\n";
-    std::cout << std::fixed << std::setprecision(2);
-    std::cout << std::setw(6) << "Time" 
-              << std::setw(12) << "Dist (m)" 
-              << std::setw(15) << "Speed (km/h)" 
-              << std::setw(12) << "Accel (G)"
-              << std::setw(15) << "Engine (N)"
-              << std::setw(12) << "Drag (N)" << "\n";
-
-    for (const auto& step : log_flat)
-    {
-        double t = step.time;
-        if (std::abs(t - 0.0) < 1e-3 || std::abs(t - 2.0) < 1e-3 || 
-            std::abs(t - 5.0) < 1e-3 || std::abs(t - 10.0) < 1e-3 || 
-            std::abs(t - 15.0) < 1e-3)
-        {
-            std::cout << std::setw(6) << step.time
-                      << std::setw(12) << step.position
-                      << std::setw(15) << (step.velocity * 3.6)
-                      << std::setw(12) << (step.acceleration / 9.80665)
-                      << std::setw(15) << step.F_engine
-                      << std::setw(12) << step.F_drag << "\n";
-        }
-    }
+    std::cout << "  - lemans_lap_simulation.json\n";
+    std::cout << "  - monza_lap_simulation.json\n";
 }
 
 int main()
 {
-    process_track("Le Mans - Circuit de la Sarthe", "data/lemans.gpx");
-    process_track("Monza - Autodromo Nazionale Monza", "data/monza.gpx");
-    run_vehicle_simulation();
+    Track lemans = process_track("Le Mans - Circuit de la Sarthe", "data/lemans.gpx");
+    Track monza = process_track("Monza - Autodromo Nazionale Monza", "data/monza.gpx");
+    run_vehicle_simulation(lemans, monza);
     return 0;
 }

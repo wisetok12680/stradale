@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Vehicle.hpp"
+#include "Track.hpp"
 #include <vector>
 #include <string>
 
@@ -13,6 +14,20 @@ struct SimulationStep {
     double F_drag;
     double F_rr;
     double F_grade;
+};
+
+struct LapSimulationStep {
+    double time;
+    double position;
+    double velocity;
+    double acceleration;
+    double x;
+    double y;
+    double F_engine;
+    double F_drag;
+    double F_rr;
+    double F_grade;
+    double curvature;
 };
 
 class VehicleDynamics {
@@ -34,6 +49,19 @@ public:
     // Exports time-series log to JSON format
     static bool export_to_json(
         const std::vector<SimulationStep>& log,
+        const std::string& filepath
+    );
+
+    // Runs a full lap simulation on a given track
+    static std::vector<LapSimulationStep> run_lap_simulation(
+        const Vehicle& vehicle,
+        const Track& track,
+        double dt
+    );
+
+    // Exports lap simulation to JSON format
+    static bool export_lap_to_json(
+        const std::vector<LapSimulationStep>& log,
         const std::string& filepath
     );
 };

@@ -151,7 +151,7 @@
         /* Canvas visualizer */
         canvas#trackCanvas {
             width: 100%;
-            height: 160px;
+            height: 250px;
             background: #000000;
             border: 1px solid var(--panel-border);
         }
@@ -210,9 +210,11 @@
         </div>
         <div class="control-panel">
             <select id="gradeSelect" onchange="loadSimulationData()">
-                <option value="simulation_log_flat.json">RUN: FLAT (0% GRADE)</option>
-                <option value="simulation_log_uphill.json">RUN: UPHILL (+5% GRADE)</option>
-                <option value="simulation_log_downhill.json">RUN: DOWNHILL (-5% GRADE)</option>
+                <option value="monza_lap_simulation.json">LAP: MONZA GP CIRCUIT</option>
+                <option value="lemans_lap_simulation.json">LAP: LE MANS (SARTHE)</option>
+                <option value="simulation_log_flat.json">RUN: FLAT STRAIGHT (0% GRADE)</option>
+                <option value="simulation_log_uphill.json">RUN: UPHILL CLIMB (+5% GRADE)</option>
+                <option value="simulation_log_downhill.json">RUN: DOWNHILL RUN (-5% GRADE)</option>
             </select>
             <button id="playBtn" onclick="togglePlayback()">PLAY</button>
             <button onclick="resetPlayback()">RESET</button>
@@ -270,7 +272,7 @@
 
             <div class="panel">
                 <div class="panel-header">Oscilloscope Position Tracker</div>
-                <canvas id="trackCanvas" width="600" height="150"></canvas>
+                <canvas id="trackCanvas" width="600" height="250"></canvas>
             </div>
         </div>
 
@@ -319,14 +321,21 @@
         }
 
         function setupCharts() {
-            const times = simData.map(d => d.time.toFixed(2));
-            const speeds = simData.map(d => (d.velocity * 3.6).toFixed(1)); // m/s to km/h
-            const accelerations = simData.map(d => (d.acceleration / 9.80665).toFixed(2)); // to Gs
+            // Downsample datasets to around 300 points to ensure smooth real-time animation
+            const stepRatio = Math.max(1, Math.floor(simData.length / 300));
+            const downsampled = [];
+            for (let i = 0; i < simData.length; i += stepRatio) {
+                downsampled.push(simData[i]);
+            }
+
+            const times = downsampled.map(d => d.time.toFixed(2));
+            const speeds = downsampled.map(d => (d.velocity * 3.6).toFixed(1)); // m/s to km/h
+            const accelerations = downsampled.map(d => (d.acceleration / 9.80665).toFixed(2)); // to Gs
             
-            const fEngine = simData.map(d => d.F_engine.toFixed(0));
-            const fDrag = simData.map(d => d.F_drag.toFixed(0));
-            const fRR = simData.map(d => d.F_rr.toFixed(0));
-            const fGrade = simData.map(d => d.F_grade.toFixed(0));
+            const fEngine = downsampled.map(d => d.F_engine.toFixed(0));
+            const fDrag = downsampled.map(d => d.F_drag.toFixed(0));
+            const fRR = downsampled.map(d => d.F_rr.toFixed(0));
+            const fGrade = downsampled.map(d => d.F_grade.toFixed(0));
 
             if (speedChart) speedChart.destroy();
             if (forceChart) forceChart.destroy();
@@ -380,6 +389,21 @@
             });
         }
 
+        function getTrackBounds() {
+            if (simData.length === 0) return { minX: 0, maxX: 0, minY: 0, maxY: 0 };
+            let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+            for (let i = 0; i < simData.length; ++i) {
+                const x = simData[i].x !== undefined ? simData[i].x : simData[i].position;
+                const y = simData[i].y !== undefined ? simData[i].y : 0;
+                
+                if (x < minX) minX = x;
+                if (x > maxX) maxX = x;
+                if (y < minY) minY = y;
+                if (y > maxY) maxY = y;
+            }
+            return { minX, maxX, minY, maxY };
+        }
+
         function updateHUD() {
             if (simData.length === 0 || currentIndex >= simData.length) return;
             const data = simData[currentIndex];
@@ -397,9 +421,14 @@
             } else if (gradeSelectVal.includes('uphill')) {
                 gradeLabel.textContent = "+5.0%";
                 gradeLabel.className = "hud-value grade-tag grade-up";
-            } else {
+            } else if (gradeSelectVal.includes('downhill')) {
                 gradeLabel.textContent = "-5.0%";
                 gradeLabel.className = "hud-value grade-tag grade-down";
+            } else {
+                // Extract grade incline slope from F_grade and vehicle mass (1300 kg)
+                let calculatedGrade = (data.F_grade / (1300.0 * 9.80665)) * 100.0;
+                gradeLabel.textContent = (calculatedGrade >= 0 ? "+" : "") + calculatedGrade.toFixed(1) + "%";
+                gradeLabel.className = "hud-value grade-tag " + (Math.abs(calculatedGrade) < 0.1 ? "grade-flat" : (calculatedGrade > 0 ? "grade-up" : "grade-down"));
             }
 
             // Simulate Shift Lights strip based on vehicle speed
@@ -416,12 +445,19 @@
                 }
             }
 
-            // Highlight index in charts
+            // Highlight index in charts using downsampled coordinate match
             if (speedChart && forceChart) {
-                speedChart.setActiveElements([{ datasetIndex: 0, index: currentIndex }]);
-                speedChart.update();
-                forceChart.setActiveElements([{ datasetIndex: 0, index: currentIndex }]);
-                forceChart.update();
+                try {
+                    const stepRatio = Math.max(1, Math.floor(simData.length / 300));
+                    const chartIndex = Math.min(Math.floor(currentIndex / stepRatio), speedChart.data.labels.length - 1);
+                    
+                    speedChart.setActiveElements([{ datasetIndex: 0, index: chartIndex }]);
+                    speedChart.update('none'); // Update instantly without animations to prevent rendering lags
+                    forceChart.setActiveElements([{ datasetIndex: 0, index: chartIndex }]);
+                    forceChart.update('none');
+                } catch (err) {
+                    // Fail silent to keep animation loop running
+                }
             }
         }
 
@@ -446,78 +482,175 @@
                 ctx.stroke();
             }
 
-            const roadY = canvas.height / 2 + 15;
-            const roadHeight = 2;
-
-            // Draw flat reference line
-            ctx.strokeStyle = "#333333";
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.moveTo(0, roadY);
-            ctx.lineTo(canvas.width, roadY);
-            ctx.stroke();
-
-            // Draw start/end markers
-            ctx.fillStyle = "#555555";
-            ctx.font = "9px 'JetBrains Mono'";
-            ctx.fillText("START: 0 m", 40, roadY - 12);
-            ctx.fillText("END: 1000 m", canvas.width - 110, roadY - 12);
-
-            // Draw vehicle
-            const currentPosition = simData[currentIndex].position;
-            const maxPosition = 1000.0;
-            const margin = 50;
+            const bounds = getTrackBounds();
+            const margin = 30;
+            const drawW = canvas.width - 2 * margin;
+            const drawH = canvas.height - 2 * margin;
             
-            // Map position to canvas x
-            const carX = margin + (currentPosition / maxPosition) * (canvas.width - 2 * margin);
-
-            // Draw barebones race-car block
-            ctx.fillStyle = "#ffffff";
-            ctx.fillRect(carX - 10, roadY - 12, 20, 10); // box chassis
+            const dx = (bounds.maxX - bounds.minX) || 1.0;
+            const dy = (bounds.maxY - bounds.minY) || 1.0;
             
-            // Draw wheels as simple rectangles
-            ctx.fillStyle = "#00ff66";
-            ctx.fillRect(carX - 8, roadY - 2, 4, 3);
-            ctx.fillRect(carX + 4, roadY - 2, 4, 3);
+            // Maintain aspect ratio
+            const scale = Math.min(drawW / dx, drawH / dy);
+            
+            // Offsets to center the track
+            const offsetX = margin + (drawW - dx * scale) / 2;
+            const offsetY = margin + (drawH - dy * scale) / 2;
 
-            // Force vectors representation
-            const fEngine = simData[currentIndex].F_engine;
-            const fDrag = simData[currentIndex].F_drag;
-            const fRR = simData[currentIndex].F_rr;
-            const fGrade = simData[currentIndex].F_grade;
+            function mapX(val) {
+                return offsetX + (val - bounds.minX) * scale;
+            }
+            function mapY(val) {
+                // Flip y-axis to match graphics orientation
+                return offsetY + drawH - (val - bounds.minY) * scale;
+            }
 
-            // Tractive vector (green line)
-            const forwardScale = 0.006;
-            const forwardVector = fEngine * forwardScale;
-            ctx.strokeStyle = "#00ff66";
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.moveTo(carX + 10, roadY - 7);
-            ctx.lineTo(carX + 10 + forwardVector, roadY - 7);
-            ctx.stroke();
-            // Arrowhead
-            ctx.fillStyle = "#00ff66";
-            ctx.beginPath();
-            ctx.moveTo(carX + 10 + forwardVector, roadY - 10);
-            ctx.lineTo(carX + 15 + forwardVector, roadY - 7);
-            ctx.lineTo(carX + 10 + forwardVector, roadY - 4);
-            ctx.fill();
+            const isLapRun = simData[0].x !== undefined;
 
-            // Drag + resistance vector (red line)
-            const opposingVector = (fDrag + fRR + fGrade) * forwardScale;
-            ctx.strokeStyle = "#ff3d00";
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.moveTo(carX - 10, roadY - 7);
-            ctx.lineTo(carX - 10 - opposingVector, roadY - 7);
-            ctx.stroke();
-            // Arrowhead
-            ctx.fillStyle = "#ff3d00";
-            ctx.beginPath();
-            ctx.moveTo(carX - 10 - opposingVector, roadY - 10);
-            ctx.lineTo(carX - 15 - opposingVector, roadY - 7);
-            ctx.lineTo(carX - 10 - opposingVector, roadY - 4);
-            ctx.fill();
+            if (isLapRun) {
+                // 1. Draw entire track layout path
+                ctx.strokeStyle = "#1a1a1a";
+                ctx.lineWidth = 4;
+                ctx.beginPath();
+                ctx.moveTo(mapX(simData[0].x), mapY(simData[0].y));
+                for (let i = 1; i < simData.length; ++i) {
+                    ctx.lineTo(mapX(simData[i].x), mapY(simData[i].y));
+                }
+                ctx.closePath();
+                ctx.stroke();
+
+                // 2. Draw Start-Finish line indicator
+                ctx.strokeStyle = "#444444";
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                ctx.arc(mapX(simData[0].x), mapY(simData[0].y), 5, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.fillStyle = "#444444";
+                ctx.font = "8px 'JetBrains Mono'";
+                ctx.fillText("S/F", mapX(simData[0].x) + 8, mapY(simData[0].y) + 3);
+
+                // 3. Draw car position
+                const currentData = simData[currentIndex];
+                const carX = mapX(currentData.x);
+                const carY = mapY(currentData.y);
+
+                // Compute heading angle from tangent vector (current -> next)
+                let angle = 0;
+                let nextIdx = (currentIndex + 1) % simData.length;
+                let tX = simData[nextIdx].x - currentData.x;
+                let tY = simData[nextIdx].y - currentData.y;
+                if (Math.abs(tX) > 1e-3 || Math.abs(tY) > 1e-3) {
+                    angle = Math.atan2(-tY, tX);
+                }
+
+                // Draw car as a glowing small square rotated to path direction
+                ctx.save();
+                ctx.translate(carX, carY);
+                ctx.rotate(angle);
+                
+                // Chassis box
+                ctx.fillStyle = "#ffffff";
+                ctx.fillRect(-6, -4, 12, 8);
+                
+                // Wheels
+                ctx.fillStyle = "#00ff66";
+                ctx.fillRect(-5, -6, 3, 2);
+                ctx.fillRect(2, -6, 3, 2);
+                ctx.fillRect(-5, 4, 3, 2);
+                ctx.fillRect(2, 4, 3, 2);
+                
+                ctx.restore();
+
+                // Draw vectors centered at car position
+                const fEngine = currentData.F_engine;
+                const fDrag = currentData.F_drag;
+                const fRR = currentData.F_rr;
+                const fGrade = currentData.F_grade;
+                
+                const forceScale = 0.008; // 1px per 125 N
+                const cosA = Math.cos(angle);
+                const sinA = Math.sin(angle);
+
+                // Engine tractive force (green arrow)
+                const fEngLen = fEngine * forceScale;
+                ctx.strokeStyle = "#00ff66";
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(carX, carY);
+                ctx.lineTo(carX + fEngLen * cosA, carY + fEngLen * sinA);
+                ctx.stroke();
+                
+                // Drag + Resistance + Grade opposing force (red arrow)
+                const fOppLen = (fDrag + fRR + fGrade) * forceScale;
+                ctx.strokeStyle = "#ff3d00";
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(carX, carY);
+                ctx.lineTo(carX - fOppLen * cosA, carY - fOppLen * sinA);
+                ctx.stroke();
+
+            } else {
+                // Straight line run visualization
+                const roadY = canvas.height / 2 + 15;
+                
+                // Draw road
+                ctx.strokeStyle = "#333333";
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(0, roadY);
+                ctx.lineTo(canvas.width, roadY);
+                ctx.stroke();
+
+                // Start/end labels
+                ctx.fillStyle = "#555555";
+                ctx.font = "9px 'JetBrains Mono'";
+                ctx.fillText("START: 0 m", 40, roadY - 12);
+                ctx.fillText("END: 1000 m", canvas.width - 110, roadY - 12);
+
+                const currentPosition = simData[currentIndex].position;
+                const maxPosition = bounds.maxX || 1000.0;
+                
+                // Map position to canvas x
+                const carX = margin + (currentPosition / maxPosition) * (canvas.width - 2 * margin);
+                const carY = roadY;
+
+                // Draw barebones race-car block
+                ctx.fillStyle = "#ffffff";
+                ctx.fillRect(carX - 10, carY - 12, 20, 10);
+                
+                // Wheels
+                ctx.fillStyle = "#00ff66";
+                ctx.fillRect(carX - 8, carY - 2, 4, 3);
+                ctx.fillRect(carX + 4, carY - 2, 4, 3);
+
+                // Forces
+                const fEngine = simData[currentIndex].F_engine;
+                const fDrag = simData[currentIndex].F_drag;
+                const fRR = simData[currentIndex].F_rr;
+                const fGrade = simData[currentIndex].F_grade;
+                
+                const forwardScale = 0.006;
+                const forwardVector = fEngine * forwardScale;
+                ctx.strokeStyle = "#00ff66";
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(carX + 10, carY - 7);
+                ctx.lineTo(carX + 10 + forwardVector, carY - 7);
+                ctx.stroke();
+
+                const opposingVector = (fDrag + fRR + fGrade) * forwardScale;
+                ctx.strokeStyle = "#ff3d00";
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(carX - 10, carY - 7);
+                ctx.lineTo(carX - 10 - opposingVector, carY - 7);
+                ctx.stroke();
+            }
+        }
+
+        function getStepSize() {
+            // Target completing the lap in ~15 to 20 seconds at ~25fps (around 400 frames total)
+            return Math.max(1, Math.floor(simData.length / 400));
         }
 
         function togglePlayback() {
@@ -536,7 +669,7 @@
         function playbackStep() {
             if (!isPlaying) return;
             
-            currentIndex += 1;
+            currentIndex += getStepSize();
             if (currentIndex >= simData.length) {
                 currentIndex = 0;
             }
@@ -544,10 +677,10 @@
             updateHUD();
             drawTrackFrame();
             
-            // Limit animation rate
+            // Limit animation rate to ~25 FPS
             setTimeout(() => {
                 animationFrameId = requestAnimationFrame(playbackStep);
-            }, 60); 
+            }, 40); 
         }
 
         function resetPlayback() {
