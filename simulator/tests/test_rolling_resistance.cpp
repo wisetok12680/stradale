@@ -1,6 +1,6 @@
 #include <iostream>
 #include <iomanip>
-#include <cassert>
+#include <assert.h>
 #include <cmath>
 #include "../include/Vehicle.hpp"
 #include "../include/Aerodynamics.hpp"

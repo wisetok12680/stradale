@@ -3,7 +3,7 @@
 #include "../include/TrackLoader.hpp"
 #include "../include/CoordinateConverter.hpp"
 #include "../include/TrackAnalyzer.hpp"
-#include "../include/VehicleDynamics.hpp"
+#include "../include/VehicleDynamics.hpp" // IWYU pragma: keep
 #include "../include/Aerodynamics.hpp"
 
 Track process_track(const char* name, const char* filepath)

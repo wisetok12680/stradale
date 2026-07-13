@@ -1,6 +1,6 @@
 #include <iostream>
 #include <iomanip>
-#include <cassert>
+#include <assert.h>
 #include <cmath>
 #include "../include/Gravity.hpp"
 #include "../include/PhysicsConstants.hpp"
